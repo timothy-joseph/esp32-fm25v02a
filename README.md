@@ -5,3 +5,10 @@ Driver for the infineon FM25V02A FRAM chip
 
 The directory components/fm25v02a contains the driver.
 This example is meant to run on spi2 or spi3 (spi0 and spi1 are used for the internal flash)
+
+
+### Todo list:
+
+1. Add functions to manipulate and get the bits inside of the status register
+2. Acquire the bus
+3. Test on hardware
