@@ -1,6 +1,8 @@
 #ifndef FM25V02A_H
 #define FM25V02A_H
 
+#include <stdint.h>
+
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
 
@@ -30,19 +32,18 @@
 #define STATUS_WPEN_OFFSET 7
 
 /* TODO: add interrupt support */
-typedef struct fram_device fram_device_t;
-struct {
+typedef struct {
 	spi_host_device_t host;
 	gpio_num_t cs;
 	uint8_t use_interrupt;
 	spi_device_handle_t spi_dev;
-} fram_device;
+} fram_device_t;
 
 esp_err_t fram_init(fram_device_t *ret, spi_host_device_t host, gpio_num_t cs,
 		    uint32_t freq);
 esp_err_t fram_write_enable(fram_device_t *dev);
 esp_err_t fram_write_disable(fram_device_t *dev);
-esp_err_t fram_read_status_register(fram_device_t *dev);
+esp_err_t fram_read_status_register(fram_device_t *dev, uint8_t *ret);
 esp_err_t fram_write_status_register(fram_device_t *dev, uint8_t data,
 				     uint8_t force_enable);
 esp_err_t fram_read(fram_device_t *dev, uint16_t addr, uint8_t *data,

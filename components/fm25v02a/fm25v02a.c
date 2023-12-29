@@ -1,3 +1,6 @@
+/* TODO: add comments */
+#include <stdint.h>
+
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
 
@@ -15,6 +18,10 @@
 #define SLEEP_CMD 0xb9
 #define RDID_CMD 0x9f
 
+static esp_err_t fram_spi_transmit_simple_cmd(fram_device_t *dev, uint8_t cmd);
+static esp_err_t fram_spi_transmit_halfduplex(fram_device_t *dev, uint8_t *tx,
+					      size_t tx_size, uint8_t *rx,
+					      size_t rx_size);
 static void set_cs(spi_transaction_t *t);
 static void clear_cs(spi_transaction_t *t);
 
@@ -36,10 +43,11 @@ fram_init(fram_device_t *ret, spi_host_device_t host, gpio_num_t cs,
 {
 	/* TODO: probably not right */
 	spi_device_interface_config_t spi_dev_cfg = {
-		.command_bits = 8,
-		.address_bits = 16,
+		.command_bits = 0,
+		.address_bits = 0,
 		.dummy_bits = 0,
 		.mode = 0,
+		.flags = SPI_DEVICE_HALFDUPLEX,
 		.clock_source = SPI_CLK_SRC_DEFAULT,
 		.clock_speed_hz = freq,
 		.spics_io_num = -1,
@@ -109,7 +117,7 @@ esp_err_t
 fram_read(fram_device_t *dev, uint16_t addr, uint8_t *data,
 	  size_t len)
 {
-	uint8_t cmd[3] = {READ_CMD}
+	uint8_t cmd[3] = {READ_CMD};
 
 	cmd[0] = READ_CMD;
 	cmd[1] = addr >> 8;
@@ -122,7 +130,7 @@ esp_err_t
 fram_fast_read(fram_device_t *dev, uint16_t addr, uint8_t *data,
 	       size_t len)
 {
-	uint8_t cmd[4] = {FSTRD_CMD}
+	uint8_t cmd[4] = {FSTRD_CMD};
 
 	cmd[0] = FSTRD_CMD;
 	cmd[1] = addr >> 8;
@@ -142,8 +150,28 @@ fram_write(fram_device_t *dev, uint16_t addr, uint8_t *data, size_t len,
 	 * receive a undetermined amount of data
 	 */
 	/* TODO: acquire spi */
+	spi_transaction_ext_t ext_t = {0};
+
+	/*
+	 * previously in the device configuration, the command_bits,
+	 * address_bits, and dummy bits were set to 0
+	 */
+	ext_t.base.flags = SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR;
+	ext_t.base.cmd = WRITE_CMD;
+	ext_t.base.addr = addr;
+	ext_t.base.tx_buffer = data;
+	ext_t.base.length = len * 8;
+	ext_t.base.user = dev;
+	ext_t.base.rx_buffer = NULL;
+	ext_t.base.rxlength = 0;
+	ext_t.command_bits = 8;
+	ext_t.address_bits = 16;
+	ext_t.dummy_bits = 0;
+
 	if (force_enable)
 		fram_write_enable(dev);
+	
+	return spi_device_polling_transmit(dev->spi_dev, &ext_t.base); 
 }
 
 esp_err_t
@@ -158,12 +186,41 @@ fram_read_device_id(fram_device_t *dev)
 	return fram_spi_transmit_simple_cmd(dev, RDID_CMD);
 }
 
+static esp_err_t
+fram_spi_transmit_simple_cmd(fram_device_t *dev, uint8_t cmd)
+{
+	return fram_spi_transmit_halfduplex(dev, &cmd, sizeof(cmd), NULL, 0);
+}
+
+static esp_err_t
+fram_spi_transmit_halfduplex(fram_device_t *dev, uint8_t *tx, size_t tx_size,
+			     uint8_t *rx, size_t rx_size)
+{
+	/* TODO: use_interrupt support */
+	spi_transaction_t t = {0};
+
+	/*
+	 * previously in the device configuration, the command_bits,
+	 * address_bits, and dummy bits were set to 0
+	 */
+	t.tx_buffer = tx;
+	t.length = tx_size * 8;
+	t.rx_buffer = rx;
+	t.rxlength = rx_size * 8;
+	t.user = dev;
+
+	return spi_device_polling_transmit(dev->spi_dev, &t);
+}
+
 static void
 set_cs(spi_transaction_t *t)
 {
+	/* t->user is fram_device_t * */
+	gpio_set_level(((fram_device_t *)t->user)->cs, 1);
 }
 
 static void
 clear_cs(spi_transaction_t *t)
 {
+	gpio_set_level(((fram_device_t *)t->user)->cs, 0);
 }
