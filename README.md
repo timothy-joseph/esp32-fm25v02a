@@ -9,6 +9,5 @@ This example is meant to run on spi2 or spi3 (spi0 and spi1 are used for the int
 
 ### Todo list:
 
-1. Add functions to manipulate and get the bits inside of the status register
-2. Acquire the bus
-3. Test on hardware
+1. Acquire the bus
+2. Test on hardware
