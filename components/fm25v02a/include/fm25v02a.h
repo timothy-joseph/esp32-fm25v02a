@@ -43,7 +43,8 @@ esp_err_t fram_init(fram_device_t *ret, spi_host_device_t host, gpio_num_t cs,
 esp_err_t fram_write_enable(fram_device_t *dev);
 esp_err_t fram_write_disable(fram_device_t *dev);
 esp_err_t fram_read_status_register(fram_device_t *dev);
-esp_err_t fram_write_status_register(fram_device_t *dev, uint8_t force_enable);
+esp_err_t fram_write_status_register(fram_device_t *dev, uint8_t data,
+				     uint8_t force_enable);
 esp_err_t fram_read(fram_device_t *dev, uint16_t addr, uint8_t *data,
 		    size_t len);
 esp_err_t fram_fast_read(fram_device_t *dev, uint16_t addr, uint8_t *data,
