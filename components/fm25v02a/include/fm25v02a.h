@@ -39,6 +39,9 @@ typedef struct {
 	spi_device_handle_t spi_dev;
 } fram_device_t;
 
+/*
+ * Function documentation is inside of the .c source file
+ */
 esp_err_t fram_init(fram_device_t *ret, spi_host_device_t host, gpio_num_t cs,
 		    uint32_t freq);
 esp_err_t fram_write_enable(fram_device_t *dev);
@@ -53,6 +56,7 @@ esp_err_t fram_fast_read(fram_device_t *dev, uint16_t addr, uint8_t *data,
 esp_err_t fram_write(fram_device_t *dev, uint16_t addr, uint8_t *data, size_t len,
 		     uint8_t force_enable);
 esp_err_t fram_sleep(fram_device_t *dev);
-esp_err_t fram_read_device_id(fram_device_t *dev);
+void fram_wakeup(fram_device_t *dev);
+esp_err_t fram_read_device_id(fram_device_t *dev, uint8_t ret_id[9]);
 
 #endif /* #ifndef FM25V02A_H */

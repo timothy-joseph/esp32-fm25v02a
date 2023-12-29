@@ -3,6 +3,7 @@
 
 #include <driver/gpio.h>
 #include <driver/spi_master.h>
+#include <esp_timer.h>
 
 #include "include/fm25v02a.h"
 
@@ -28,7 +29,8 @@ static void clear_cs(spi_transaction_t *t);
 /**
  * Function used to initialize the device pointed to by ret
  *
- * @param ret The device to initialize
+ * @param ret After this call *ret will contain the context of the device.
+ *	      This is the parameter you need to send to the other commands.
  * @param host The spi host (SPI1_HOST is not a valid parameter)
  * @param cs The gpio pin used for chip select
  * @param freq The desired frequency to run the device at (max freq is 40mhz)
@@ -73,18 +75,46 @@ fram_init(fram_device_t *ret, spi_host_device_t host, gpio_num_t cs,
 	return ESP_OK;
 }
 
+/**
+ * This function is used to send the command WREN which enables writing to the
+ * fram chip. After each write operation (every type of write), writing is
+ * disabled by default (hardware related).
+ *
+ * @param dev The fram device
+ *
+ * @returns Same as fram_spi_transmit_simple_cmd
+ */
 esp_err_t
 fram_write_enable(fram_device_t *dev)
 {
 	return fram_spi_transmit_simple_cmd(dev, WREN_CMD);
 }
 
+/**
+ * This function is used to send the command WRDI which disables writing to the
+ * fram chip.
+ *
+ * @param dev The fram device
+ *
+ * @returns Same as fram_spi_transmit_simple_cmd
+ */
 esp_err_t
 fram_write_disable(fram_device_t *dev)
 {
 	return fram_spi_transmit_simple_cmd(dev, WRDI_CMD);
 }
 
+/**
+ * This function is used to read the status register of the fram chip.
+ *
+ * @param dev The fram device
+ * @param ret A pointer to a single byte in which the result of the read
+ *	      operation will be put
+ *
+ * @returns
+ *	- ESP_ERR_INVALID_ARG if ret is NULL
+ *	- same as fram_spi_transmit_halfduplex otherwise
+ */
 esp_err_t
 fram_read_status_register(fram_device_t *dev, uint8_t *ret)
 {
@@ -97,6 +127,19 @@ fram_read_status_register(fram_device_t *dev, uint8_t *ret)
 					    sizeof(*ret));
 }
 
+/**
+ * This function is used to write to the status register of the fram chip.
+ *
+ * @param dev The fram device
+ * @param data The byte to write to the status register
+ * @param force_enable If force_enable is set, then this function will first
+ *		       call fram_write_enable and then transmit the data.
+ *		       If force_enable is not set, then the function will go
+ *		       directly to transmitting the data, even if writing is
+ *		       disabled
+ *
+ * @returns same as fram_spi_transmit_halfduplex
+ */
 esp_err_t
 fram_write_status_register(fram_device_t *dev, uint8_t data,
 			   uint8_t force_enable)
@@ -113,6 +156,19 @@ fram_write_status_register(fram_device_t *dev, uint8_t data,
 	return fram_spi_transmit_halfduplex(dev, cmd, sizeof(cmd), NULL, 0);
 }
 
+/**
+ * This function is used to read a undetermined amount of data from the fram
+ * chip
+ *
+ * @param dev The fram device
+ * @param addr The address at which to start reading from
+ * @param data A array of bytes which will contain the data red from the fram
+ *	       chip. This array must be allocated (statically or dynamically)
+ *	       by the user to be atleast of len size
+ * @param len The amount of bytes to read from data
+ *
+ * @returns same as fram_spi_transmit_halfduplex
+ */
 esp_err_t
 fram_read(fram_device_t *dev, uint16_t addr, uint8_t *data,
 	  size_t len)
@@ -126,6 +182,21 @@ fram_read(fram_device_t *dev, uint16_t addr, uint8_t *data,
 	return fram_spi_transmit_halfduplex(dev, cmd, sizeof(cmd), data, len);
 }
 
+/**
+ * This function is used to read a undetermined amount of data from the fram
+ * chip. This function is implemented for the sake of completeness. Do not
+ * use it. Despite its name being fastread, it's actually slower because it
+ * inserts a dummy byte when transmitting the address.
+ *
+ * @param dev The fram device
+ * @param addr The address at which to start reading from
+ * @param data A array of bytes which will contain the data red from the fram
+ *	       chip. This array must be allocated (statically or dynamically)
+ *	       by the user to be atleast of len size
+ * @param len The amount of bytes to read from data
+ *
+ * @returns same as fram_spi_transmit_halfduplex
+ */
 esp_err_t
 fram_fast_read(fram_device_t *dev, uint16_t addr, uint8_t *data,
 	       size_t len)
@@ -140,6 +211,24 @@ fram_fast_read(fram_device_t *dev, uint16_t addr, uint8_t *data,
 	return fram_spi_transmit_halfduplex(dev, cmd, sizeof(cmd), data, len);
 }
 
+/**
+ * This function is used to write a data to the fram chip.
+ *
+ * @param dev The fram device
+ * @param addr The address at which to start writing to
+ * @param data A array of bytes which will be writtinen into the fram starting
+ *	       at addr
+ * @param len The amount of bytes to write from data
+ * @param force_enable If force_enable is set, then this function will first
+ *		       call fram_write_enable and then transmit the data.
+ *		       If force_enable is not set, then the function will go
+ *		       directly to transmitting the data, even if writing is
+ *		       disabled
+ *
+ * @returns
+ *	- ESP_ERR_INVALID_ARG if dev == NULL
+ *	- same as fram_spi_transmit_halfduplex otherwise
+ */
 esp_err_t
 fram_write(fram_device_t *dev, uint16_t addr, uint8_t *data, size_t len,
 	   uint8_t force_enable)
@@ -151,6 +240,9 @@ fram_write(fram_device_t *dev, uint16_t addr, uint8_t *data, size_t len,
 	 */
 	/* TODO: acquire spi */
 	spi_transaction_ext_t ext_t = {0};
+
+	if (dev == NULL)
+		return ESP_ERR_INVALID_ARG;
 
 	/*
 	 * previously in the device configuration, the command_bits,
@@ -174,24 +266,84 @@ fram_write(fram_device_t *dev, uint16_t addr, uint8_t *data, size_t len,
 	return spi_device_polling_transmit(dev->spi_dev, &ext_t.base); 
 }
 
+/**
+ * This function is used to send the command SLEEP which puts the device in
+ * sleep mode
+ *
+ * @param dev The fram device
+ *
+ * @returns Same as fram_spi_transmit_simple_cmd
+ */
 esp_err_t
 fram_sleep(fram_device_t *dev)
 {
 	return fram_spi_transmit_simple_cmd(dev, SLEEP_CMD);
 }
 
-esp_err_t
-fram_read_device_id(fram_device_t *dev)
+/**
+ * This function is used to wakeup the device
+ *
+ * The datasheet recomends sending a dummy command then wait the remaining
+ * time from Trec, which is 400 us
+ *
+ * @param dev The fram device
+ */
+void
+fram_wakeup(fram_device_t *dev)
 {
-	return fram_spi_transmit_simple_cmd(dev, RDID_CMD);
+	int64_t us;
+
+	us = esp_timer_get_time();
+	if (fram_spi_transmit_simple_cmd(dev, RDSR_CMD) == ESP_OK)
+		while (esp_timer_get_time() - us < 400);
 }
 
+/**
+ * This function is used to read the device id of the fram chip. The device id
+ * is 9 bytes
+ *
+ * @param dev The fram device
+ * @param ret_id A array of 9 bytes that the user must allocate
+ *
+ * @returns Same as fram_spi_transmit_halfduplex
+ */
+esp_err_t
+fram_read_device_id(fram_device_t *dev, uint8_t ret_id[9])
+{
+	uint8_t cmd = RDID_CMD;
+
+	return fram_spi_transmit_halfduplex(dev, &cmd, sizeof(cmd), ret_id, 9);
+}
+
+/**
+ * This is a internal function used to send a simple command to the fram chip.
+ * A simple command is a transmission that is exactly 1 byte
+ *
+ * @param dev The fram device
+ * @param cmd The command to send
+ *
+ * @returns Same as fram_spi_transmit_halfduplex
+ */
 static esp_err_t
 fram_spi_transmit_simple_cmd(fram_device_t *dev, uint8_t cmd)
 {
 	return fram_spi_transmit_halfduplex(dev, &cmd, sizeof(cmd), NULL, 0);
 }
 
+/**
+ * This is a internal function used to perform a halfduplex transmission with
+ * the send data as tx and the data to receive stored into rx.
+ * The opcode and address (if needed) should be part of tx
+ *
+ * @param dev The fram device
+ * @param tx The data to send
+ * @param tx_size The number of bytes to send from tx
+ * @param rx The receive buffer into which data will be put in the read part of
+ *	     the transmission. Must be allocated by the user
+ * @param rx_size The number of bytes to read
+ *
+ * @returns Same as fram_spi_transmit_halfduplex
+ */
 static esp_err_t
 fram_spi_transmit_halfduplex(fram_device_t *dev, uint8_t *tx, size_t tx_size,
 			     uint8_t *rx, size_t rx_size)
@@ -212,6 +364,10 @@ fram_spi_transmit_halfduplex(fram_device_t *dev, uint8_t *tx, size_t tx_size,
 	return spi_device_polling_transmit(dev->spi_dev, &t);
 }
 
+/**
+ * This is a internal function used inside of the device config to
+ * set the cs pin high
+ */
 static void
 set_cs(spi_transaction_t *t)
 {
@@ -219,6 +375,10 @@ set_cs(spi_transaction_t *t)
 	gpio_set_level(((fram_device_t *)t->user)->cs, 1);
 }
 
+/**
+ * This is a internal function used inside of the device config to
+ * set the cs pin low
+ */
 static void
 clear_cs(spi_transaction_t *t)
 {
