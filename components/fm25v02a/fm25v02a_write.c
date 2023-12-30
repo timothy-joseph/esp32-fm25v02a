@@ -39,7 +39,7 @@ fram_write(fram_device_t *dev, uint16_t addr, uint8_t *data, size_t len,
 
 	if (dev == NULL)
 		return ESP_ERR_INVALID_ARG;
-	
+
 	/*
 	 * previously in the device configuration, the command_bits,
 	 * address_bits, and dummy bits were set to 0
