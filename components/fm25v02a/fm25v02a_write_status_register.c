@@ -29,16 +29,28 @@ esp_err_t
 fram_write_status_register(fram_device_t *dev, uint8_t data,
 			   uint8_t force_enable)
 {
+	esp_err_t err, spi_transmit_err;
 	uint8_t cmd[2] = {WRSR_CMD};
-
-	/* TODO: acquire spi */
 
 	cmd[0] = WRSR_CMD;
 	cmd[1] = data;
-	if (force_enable)
+	if (force_enable) {
+		/* acquire the bus so both commands are sent back to back */
+		err = spi_device_acquire_bus(dev->spi_dev, portMAX_DELAY);
+		if (err != ESP_OK)
+			return err;
 		fram_write_enable(dev);
+	}
 	
-	return fram_spi_transmit_halfduplex(dev, cmd, sizeof(cmd), NULL, 0);
+	spi_transmit_err = fram_spi_transmit_halfduplex(dev, cmd, sizeof(cmd),
+							NULL, 0);
+
+	/* release the bus if it was taken */
+	if (force_enable)
+		spi_device_release_bus(dev->spi_dev);
+	
+	/* this is the output of fram_spi_transmit_halfduplex */
+	return spi_transmit_err;
 }
 
 /**

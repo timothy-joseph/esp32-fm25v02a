@@ -21,6 +21,8 @@
  *
  * @returns
  *	- ESP_ERR_INVALID_ARG if dev == NULL
+ *	- if force_enable and spi_device_acquire_bus returns something other
+ *	  than ESP_OK, then return that error
  *	- same as fram_spi_transmit_halfduplex otherwise
  */
 esp_err_t
@@ -32,12 +34,12 @@ fram_write(fram_device_t *dev, uint16_t addr, uint8_t *data, size_t len,
 	 * i didn't need to write a undetermined amount of data, just
 	 * receive a undetermined amount of data
 	 */
-	/* TODO: acquire spi */
+	esp_err_t err, spi_transmit_err;
 	spi_transaction_ext_t ext_t = {0};
 
 	if (dev == NULL)
 		return ESP_ERR_INVALID_ARG;
-
+	
 	/*
 	 * previously in the device configuration, the command_bits,
 	 * address_bits, and dummy bits were set to 0
@@ -54,8 +56,20 @@ fram_write(fram_device_t *dev, uint16_t addr, uint8_t *data, size_t len,
 	ext_t.address_bits = 16;
 	ext_t.dummy_bits = 0;
 
-	if (force_enable)
+	if (force_enable) {
+		/* acquire the bus so both commands are sent back to back */
+		err = spi_device_acquire_bus(dev->spi_dev, portMAX_DELAY);
+		if (err != ESP_OK)
+			return err;
 		fram_write_enable(dev);
+	}
 	
-	return spi_device_polling_transmit(dev->spi_dev, &ext_t.base); 
+	spi_transmit_err = spi_device_polling_transmit(dev->spi_dev,
+						       &ext_t.base);
+
+	/* release the bus */
+	if (force_enable)
+		spi_device_release_bus(dev->spi_dev);
+
+	return spi_transmit_err;
 }
