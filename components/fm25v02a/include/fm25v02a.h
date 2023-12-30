@@ -30,12 +30,13 @@
 #define STATUS_WPEN_OFFSET 7
 
 /* TODO: add interrupt support */
-typedef struct {
+struct fram_device{
 	spi_host_device_t host;
 	gpio_num_t cs;
 	uint8_t use_interrupt;
 	spi_device_handle_t spi_dev;
-} fram_device_t;
+};
+typedef struct fram_device fram_device_t;
 
 /*
  * Function documentation is inside of the .c source files
